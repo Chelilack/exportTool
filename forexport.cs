@@ -1,8 +1,11 @@
-
+using UnityEditor;
+using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.Requests;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -134,7 +137,7 @@ public class Forexport : ScriptableObject
 
             if (url == "not found")
             {
-                Debug.LogWarning($"[GetPackageURLsWithHash] URL not found for package: {packageName}");
+                Debug.Log($"[GetPackageURLsWithHash] URL not found for package: {packageName}");
                 continue;                
             }
 
@@ -142,7 +145,7 @@ public class Forexport : ScriptableObject
             //return $"{url}#{hash}";
             if (string.IsNullOrEmpty(hash) || hash == "not found")
             {
-                Debug.LogWarning($"[GetPackageURLsWithHash] Hash not found for package: {packageName}");
+                Debug.Log($"[GetPackageURLsWithHash] Hash not found for package: {packageName}");
                 result.Add(url);
                 continue;
             }
@@ -151,5 +154,49 @@ public class Forexport : ScriptableObject
         }
         return result;
     }
+    
+    public void InstallGitPackages()
+    {
+        if (gitUrls == null || gitUrls.Count == 0)
+        {
+            Debug.Log("[InstallGitPackages] gitUrls list is empty.");
+            return;
+        }
 
+        EditorCoroutineUtility.StartCoroutineOwnerless(InstallPackagesCoroutine());
+    }
+
+    private System.Collections.IEnumerator InstallPackagesCoroutine()
+    {
+        Debug.Log($"[InstallGitPackages] Installing {gitUrls.Count} packages...");
+
+        foreach (var url in gitUrls)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Debug.Log("[InstallGitPackages] Empty or null URL skipped.");
+                continue;
+            }
+
+            Debug.Log($"[InstallGitPackages] Adding package: {url}");
+
+            AddRequest request = Client.Add(url);
+            
+            while (!request.IsCompleted)
+                yield return null;
+
+            if (request.Status == StatusCode.Success)
+            {
+                Debug.Log($"[InstallGitPackages] Installed: {request.Result.name} {request.Result.version}");
+            }
+            else if (request.Status >= StatusCode.Failure)
+            {
+                Debug.LogError(
+                    $"[InstallGitPackages] Failed to install {url}\n" +
+                    $"Error: {request.Error?.message}"
+                );
+            }
+        }
+        Debug.Log("[InstallGitPackages] All Add operations completed.");
+    }
 }

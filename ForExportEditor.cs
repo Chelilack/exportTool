@@ -19,9 +19,15 @@ public class ForExportEditor : Editor
 
         var exportSO = (Forexport)target;
 
-        if (GUILayout.Button("Collect ASMDEFs"))
+        if (GUILayout.Button("Collect packages"))
         {
             exportSO.CollectUrlsForExport();
+            /*collector.results = Collect(collector.prefabsFolder);
+            EditorUtility.SetDirty(collector);*/
+        }
+        if (GUILayout.Button("Install packages"))
+        {
+            exportSO.InstallGitPackages();
             /*collector.results = Collect(collector.prefabsFolder);
             EditorUtility.SetDirty(collector);*/
         }
