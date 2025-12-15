@@ -9,6 +9,17 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "forexport", menuName = "Scriptable Objects/forexport")]
 public class Forexport : ScriptableObject
 {
+    public List<string> gitUrls;
+
+    public void CollectUrlsForExport()
+    {
+        var result = FindAllTypes(Path.GetDirectoryName(AssetDatabase.GetAssetPath(this)));
+        var result2 = GetHashSetAsmdef(result);
+        var result3 = GetPackageName(result2);
+        var result4 = GetPackageURLWithHash(result3);
+        Debug.Log($"Result4: {string.Join(',', result4)}");
+        gitUrls = result4.ToList();
+    }
     private Dictionary<string,string> asmdefPackageNames = new Dictionary<string,string>
     {
         { "testPackage", "com.chelilack.testpackage" },
@@ -79,12 +90,10 @@ public class Forexport : ScriptableObject
     {
         string path = Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
         string json = File.ReadAllText(path);
-
-        // находим название пакета
+        
         int index = json.IndexOf($"\"{packageName}\"", StringComparison.Ordinal);
         if (index < 0) return "not found";
-
-        // ищем "hash": "..."
+        
         int hashIndex = json.IndexOf("\"hash\":", index, StringComparison.Ordinal);
         int start = json.IndexOf("\"", hashIndex + 7, StringComparison.Ordinal) + 1;
         int end = json.IndexOf("\"", start, StringComparison.Ordinal);
@@ -96,12 +105,10 @@ public class Forexport : ScriptableObject
     {
         string path = Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
         string json = File.ReadAllText(path);
-
-        // Находим пакет
+        
         int index = json.IndexOf($"\"{packageName}\"", StringComparison.Ordinal);
         if (index < 0) return "not found";
-
-        // Находим "version": "..."
+        
         int versionIndex = json.IndexOf("\"version\":", index, StringComparison.Ordinal);
         int start = json.IndexOf("\"", versionIndex + 10, StringComparison.Ordinal) + 1;
         int end = json.IndexOf("\"", start, StringComparison.Ordinal);
@@ -139,10 +146,9 @@ public class Forexport : ScriptableObject
                 result.Add(url);
                 continue;
             }
-            // Формируем "<URL>#<hash>"
+            
             result.Add($"{url}#{hash}");
         }
-
         return result;
     }
 
