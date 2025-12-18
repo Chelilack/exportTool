@@ -18,18 +18,19 @@ public class ForExportEditor : Editor
         DrawDefaultInspector();
 
         var exportSO = (Forexport)target;
+        string assetPath = AssetDatabase.GetAssetPath(exportSO);
 
         if (GUILayout.Button("Collect packages"))
         {
             exportSO.CollectUrlsForExport();
-            /*collector.results = Collect(collector.prefabsFolder);
-            EditorUtility.SetDirty(collector);*/
         }
         if (GUILayout.Button("Install packages"))
         {
             exportSO.InstallGitPackages();
-            /*collector.results = Collect(collector.prefabsFolder);
-            EditorUtility.SetDirty(collector);*/
+        }
+        if (GUILayout.Button("Export folder"))
+        {
+            exportSO.ExportFolder( Path.GetDirectoryName(assetPath),exportSO.exportPath);
         }
     }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using export;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -13,21 +14,27 @@ using UnityEngine;
 public class Forexport : ScriptableObject
 {
     public List<string> gitUrls;
-
+    private HashSet<string> asmdefNewPackages = new HashSet<string>(); // for packages that was created in this project and pushed on git 
+    public string packageName;
+    public string exportPath;
+    
     public void CollectUrlsForExport()
     {
+        exportPath = PackagesRepo.Initialize();
         var result = FindAllTypes(Path.GetDirectoryName(AssetDatabase.GetAssetPath(this)));
         var result2 = GetHashSetAsmdef(result);
         var result3 = GetPackageName(result2);
         var result4 = GetPackageURLWithHash(result3);
+        var result5 = GetGitURLWithHash();
         Debug.Log($"Result4: {string.Join(',', result4)}");
         gitUrls = result4.ToList();
+        gitUrls.AddRange(result5.ToList());
     }
-    private Dictionary<string,string> asmdefPackageNames = new Dictionary<string,string>
-    {
+    private Dictionary<string, string> asmdefPackageNames = new Dictionary<string, string>();
+    /*{
         { "testPackage", "com.chelilack.testpackage" },
         { "secondTest", "com.chelilack.secondtestpackage" }
-    };
+    };*/
 
     public  HashSet<Type> FindAllTypes(string folderPath)
     {
@@ -86,10 +93,20 @@ public class Forexport : ScriptableObject
             {
                 packageNames.Add(asmdefPackageNames[asmdef]);
             }
+            else
+            {
+                asmdefNewPackages.Add(asmdef);
+            }
         }
+        foreach (var packageName in asmdefNewPackages)
+        {
+            Debug.Log($"{packageName} -- {FindGitDirUpFromAsmdef(packageName)}, {GetRemoteUrl(FindGitDirUpFromAsmdef(packageName))}");
+            Debug.Log($"{packageName} -- {FindPackageJsonForAsmdef(packageName)}");
+        }
+        
         return packageNames;
     }
-    public string GetGitPackageHash(string packageName)
+    private string GetGitPackageHash(string packageName)
     {
         string path = Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
         string json = File.ReadAllText(path);
@@ -104,7 +121,7 @@ public class Forexport : ScriptableObject
         return json.Substring(start, end - start);
     }
     
-    string GetGitPackageUrlSimple(string packageName)
+    private string GetGitPackageUrlSimple(string packageName)
     {
         string path = Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
         string json = File.ReadAllText(path);
@@ -138,6 +155,7 @@ public class Forexport : ScriptableObject
             if (url == "not found")
             {
                 Debug.Log($"[GetPackageURLsWithHash] URL not found for package: {packageName}");
+                //if ()
                 continue;                
             }
 
@@ -154,7 +172,18 @@ public class Forexport : ScriptableObject
         }
         return result;
     }
-    
+    public HashSet<string> GetGitURLWithHash()
+    {
+        HashSet<string> result = new HashSet<string>();
+        foreach (var asmdef in asmdefNewPackages)
+        {
+            string gitFolderPath = FindGitDirUpFromAsmdef(asmdef);
+            string url = GetRemoteUrl(gitFolderPath);
+            string hash = GetCommitHashForBranch(gitFolderPath,"master");
+            result.Add($"{url}#{hash}");
+        }
+        return result;
+    }
     public void InstallGitPackages()
     {
         if (gitUrls == null || gitUrls.Count == 0)
@@ -198,5 +227,218 @@ public class Forexport : ScriptableObject
             }
         }
         Debug.Log("[InstallGitPackages] All Add operations completed.");
+    }
+    
+    public string FindPackageJsonForAsmdef(string asmdefName)
+    {
+        string guid = AssetDatabase.FindAssets($"{asmdefName} t:asmdef").FirstOrDefault();
+
+        if (string.IsNullOrEmpty(guid))
+        {
+            Debug.LogWarning($"ASMDEF '{asmdefName}' не найден.");
+            return null;
+        }
+
+        string asmdefPath = AssetDatabase.GUIDToAssetPath(guid);
+        string directory = Path.GetDirectoryName(asmdefPath).Replace("\\", "/");
+        
+        string found = FindPackageJsonInDirectory(directory);
+        if (found != null)
+            return found;
+        
+        while (true)
+        {
+            var parent = Directory.GetParent(directory)?.FullName;
+            if (parent == null)
+                break;
+
+            directory = parent.Replace("\\", "/");
+
+            found = FindPackageJsonInDirectory(directory);
+            if (found != null)
+                return found;
+        }
+
+        Debug.LogWarning($"Для ASMDEF '{asmdefName}' не найден подходящий JSON-файл пакета.");
+        return null;
+    }
+    private string FindPackageJsonInDirectory(string directory)
+    {
+        var jsonFiles = Directory.GetFiles(directory, "*.json", SearchOption.TopDirectoryOnly);
+
+        foreach (var file in jsonFiles)
+        {
+            if (IsUnityPackageJson(file))
+                return file;
+        }
+
+        return null;
+    }
+    
+    private bool IsUnityPackageJson(string path)
+    {
+        try
+        {
+            string content = File.ReadAllText(path);
+            return content.Contains("\"name\"") && content.Contains("\"version\"");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    public string GetCommitHashForBranch(string gitFolderPath, string branchName)
+    {
+        if (string.IsNullOrEmpty(gitFolderPath) || !Directory.Exists(gitFolderPath))
+        {
+            Debug.LogError("Git folder not found: " + gitFolderPath);
+            return null;
+        }
+        
+        string branchRefPath = Path.Combine(gitFolderPath, "refs", "heads", branchName);
+
+        if (File.Exists(branchRefPath))
+        {
+            string hash = File.ReadAllText(branchRefPath).Trim();
+            return hash;
+        }
+        
+        string packedRefsPath = Path.Combine(gitFolderPath, "packed-refs");
+        if (File.Exists(packedRefsPath))
+        {
+            Debug.Log($"packed-refs occured: {packedRefsPath}");
+        }
+
+        Debug.LogWarning($"Коммит ветки '{branchName}' не найден в: {gitFolderPath}");
+        return null;
+    }
+    public string FindGitDirUpFromAsmdef(string asmdefName)
+    {
+        string guid = AssetDatabase.FindAssets($"{asmdefName} t:asmdef").FirstOrDefault();
+        if (string.IsNullOrEmpty(guid))
+        {
+            Debug.LogWarning($"ASMDEF '{asmdefName}' не найден.");
+            return null;
+        }
+
+        string asmdefPath = AssetDatabase.GUIDToAssetPath(guid);
+        string currentDir = Path.GetDirectoryName(asmdefPath);
+
+        while (!string.IsNullOrEmpty(currentDir))
+        {
+            string gitPath = Path.Combine(currentDir, ".git");
+            
+            if (Directory.Exists(gitPath))
+                return NormalizePath(gitPath);
+            
+            if (File.Exists(gitPath))
+            {
+                string resolved = ResolveGitDirFromGitFile(gitPath);
+                if (!string.IsNullOrEmpty(resolved) && Directory.Exists(resolved))
+                    return NormalizePath(resolved);
+            }
+
+            var parent = Directory.GetParent(currentDir);
+            if (parent == null) break;
+            currentDir = parent.FullName;
+        }
+
+        return null;
+    }
+
+    private string ResolveGitDirFromGitFile(string gitFilePath)
+    {
+        // Содержимое обычно: "gitdir: /path/to/actual/git/dir"
+        string text = File.ReadAllText(gitFilePath).Trim();
+        const string prefix = "gitdir:";
+        if (!text.StartsWith(prefix))
+            return null;
+
+        string pathPart = text.Substring(prefix.Length).Trim();
+        
+        string baseDir = Path.GetDirectoryName(gitFilePath);
+        string combined = Path.IsPathRooted(pathPart) ? pathPart : Path.GetFullPath(Path.Combine(baseDir, pathPart));
+        return combined;
+    }
+
+    private string NormalizePath(string p) => p.Replace("\\", "/");
+    
+    public static string GetRemoteUrl(string gitDirPath, string remoteName = "origin")
+    {
+        if (string.IsNullOrWhiteSpace(gitDirPath))
+            throw new ArgumentException("gitDirPath is null/empty");
+
+        string configPath = Path.Combine(gitDirPath, "config");
+        if (!File.Exists(configPath))
+            return null;
+
+        string targetSection = $"remote \"{remoteName}\"";
+        bool inTargetSection = false;
+
+        foreach (var raw in File.ReadLines(configPath))
+        {
+            string line = raw.Trim();
+
+            if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";"))
+                continue;
+
+            // Секция: [remote "origin"]
+            if (line.StartsWith("[") && line.EndsWith("]"))
+            {
+                string sectionName = line.Substring(1, line.Length - 2).Trim();
+                inTargetSection = string.Equals(sectionName, targetSection, StringComparison.Ordinal);
+                continue;
+            }
+
+            if (!inTargetSection)
+                continue;
+            
+            int eq = line.IndexOf('=');
+            if (eq < 0)
+                continue;
+            
+            string key = line.Substring(0, eq).Trim();
+            string value = line.Substring(eq + 1).Trim();
+
+            if (string.Equals(key, "url", StringComparison.OrdinalIgnoreCase))
+                return value;
+        }
+
+        return null;
+    }
+    
+    public void ExportFolder(string sourceFolder, string outputPath)
+    {
+        if (packageName == null)
+        {
+            Debug.LogError("packageName is null");
+            return;
+        }
+        if (!AssetDatabase.IsValidFolder(sourceFolder))
+        {
+            Debug.LogError($"Папка не найдена: {sourceFolder}");
+            return;
+        }
+        CollectUrlsForExport();
+        
+        string[] assetGuids = AssetDatabase.FindAssets("", new[] { sourceFolder });
+        string[] assetPaths = new string[assetGuids.Length];
+
+        for (int i = 0; i < assetGuids.Length; i++)
+        {
+            assetPaths[i] = AssetDatabase.GUIDToAssetPath(assetGuids[i]);
+        }
+        
+        AssetDatabase.ExportPackage(
+            assetPaths,
+            outputPath+$"\\{packageName}.unitypackage",
+            ExportPackageOptions.Recurse | ExportPackageOptions.IncludeDependencies
+        );
+        PackagesRepo.ExportToRepo(exportPath, outputPath+$"\\{packageName}.unitypackage");
+        
+        
+
+        Debug.Log($"Экспорт завершён: {outputPath}");
     }
 }
