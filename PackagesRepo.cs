@@ -9,14 +9,14 @@ namespace export
     public static class PackagesRepo
     {
         static string repoUrl = "https://github.com/Chelilack/ForDesigner.git";
-        public static string Initialize() 
+        public static string InitializeImportRepo() 
         {
             string tempRoot = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "UnityGitTemp"
             );
 
-            string repoPath = Path.Combine(tempRoot, "RemoteRepo");
+            string repoPath = Path.Combine(tempRoot, "RemoteImportRepo");
 
             Directory.CreateDirectory(tempRoot);
             Debug.Log($"created repo in {tempRoot}");
@@ -29,6 +29,30 @@ namespace export
                 );
 
                 GitReader.Run("sparse-checkout init --no-cone", repoPath);
+            }
+            return repoPath;
+            
+        }
+        public static string InitializeExportRepo() 
+        {
+            string tempRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "UnityGitTemp"
+            );
+
+            string repoPath = Path.Combine(tempRoot, "RemoteExportRepo");
+
+            Directory.CreateDirectory(tempRoot);
+            Debug.Log($"created repo in {tempRoot}");
+
+            if (!Directory.Exists(Path.Combine(repoPath, ".git")))
+            {
+                // Клонируем без checkout
+                GitReader.Run(
+                    $"clone --no-checkout {repoUrl} \"{repoPath}\"",
+                    tempRoot
+                );
+
             }
             return repoPath;
             
@@ -54,11 +78,13 @@ namespace export
         public static void InstallPackages(string repoPath, string[] packageNames)
         {
             string[] packagePaths = packageNames
-                .Select(name => $"/{name}.unitypackage")
+                .Select(name => $"/\"{name}.unitypackage\"")
                 .ToArray();
             Debug.Log(string.Join(',',packagePaths));
             string filesArg = string.Join(" ", packagePaths);
 
+            GitReader.Run("fetch origin", repoPath);
+            
             GitReader.Run(
                 $"sparse-checkout set {filesArg}",
                 repoPath

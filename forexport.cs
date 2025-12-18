@@ -20,7 +20,7 @@ public class Forexport : ScriptableObject
     
     public void CollectUrlsForExport()
     {
-        exportPath = PackagesRepo.Initialize();
+        exportPath = PackagesRepo.InitializeExportRepo();
         var result = FindAllTypes(Path.GetDirectoryName(AssetDatabase.GetAssetPath(this)));
         var result2 = GetHashSetAsmdef(result);
         var result3 = GetPackageName(result2);

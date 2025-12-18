@@ -46,7 +46,7 @@ namespace export
 
             if (GUILayout.Button("Install"))
             {
-                repoPath = PackagesRepo.Initialize();
+                repoPath = PackagesRepo.InitializeImportRepo();
             }
             
             if (GUILayout.Button("GetPackagesNames") )
